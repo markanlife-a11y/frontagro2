@@ -5,6 +5,7 @@ from telebot.types import Message
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from flask import Flask, request, abort
+import base64 # ❗️ Нужна новая библиотека (она встроена в Python)
 
 # --- ВАШИ КЛЮЧИ ---
 # Возьмите их из настроек хостинга (Render)
@@ -88,16 +89,19 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (ИМЯ ФАЙЛА) ---
-        # Roboflow ожидает, что поле будет 'image', а не 'file'
-        with open(original_image_path, 'rb') as f:
-            files = {'image': f} # <-- ❗️❗️❗️ ВОТ ИСПРАВЛЕНИЕ ❗️❗️❗️
-            response = requests.post(
-                ROBOFLOW_API_URL,
-                params=ROBOFLOW_PARAMS, 
-                files=files, # 'files' автоматически создаст правильный 'Content-Type'
-                timeout=30
-            )
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (Base64) ---
+        # 1. Читаем файл и кодируем его в Base64
+        with open(original_image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # 2. Отправляем Base64-строку как 'data', а не 'files'
+        response = requests.post(
+            ROBOFLOW_API_URL,
+            params=ROBOFLOW_PARAMS, 
+            data=encoded_string, # ❗️ Отправляем текст
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}, # ❗️ Говорим, что это текст
+            timeout=30
+        )
         # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if response.status_code != 200:
