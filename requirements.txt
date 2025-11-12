@@ -3,3 +3,4 @@ requests
 Pillow
 Flask
 gunicorn
+inference_sdk
