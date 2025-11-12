@@ -2,7 +2,7 @@ import os
 import requests
 import telebot
 from telebot.types import Message
-from PIL import Image, ImageDraw, ImageFont # ❗️ PIL нам нужен для открытия фото
+from PIL import Image, ImageDraw, ImageFont # ❗️ PIL нам нужен для СЖАТИЯ
 from datetime import datetime
 from flask import Flask, request, abort
 import base64
@@ -79,7 +79,7 @@ def send_welcome(message: Message):
 def handle_photo(message: Message):
     chat_id = message.chat.id
     try:
-        bot.send_message(chat_id, "📸 Фото получил. Начинаю анализ...")
+        bot.send_message(chat_id, "📸 Фото получил. Сжимаю... Начинаю анализ...")
 
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
@@ -89,17 +89,23 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (PIL.Image) ---
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (СЖАТИЕ ФОТО) ---
         
-        # 1. Открываем сохраненное фото с помощью PIL
+        # 1. Открываем сохраненное фото
         pil_image = Image.open(original_image_path)
         
-        # 2. Вызываем Roboflow, передавая ОБЪЕКТ PIL, а не путь
+        # 2. Уменьшаем его до 640px (стандарт для Roboflow)
+        pil_image.thumbnail((640, 640))
+        
+        # 3. Сохраняем сжатое фото (перезаписываем старый файл)
+        pil_image.save(original_image_path, "JPEG")
+        
+        # 4. Вызываем Roboflow, передавая ПУТЬ к сжатому фото
         result = rf_client.run_workflow(
             workspace_name=ROBOFLOW_WORKSPACE,
             workflow_id=ROBOFLOW_WORKFLOW_ID,
             images={
-                "image": pil_image # ❗️❗️❗️ ВОТ ИСПРАВЛЕНИЕ ❗️❗️❗️
+                "image": original_image_path # ❗️ SDK сам обработает путь к файлу
             }
         )
         # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
@@ -113,7 +119,7 @@ def handle_photo(message: Message):
                     break
         
         today_date = datetime.now().strftime("%d.%m.%Y")
-        # Функция водяных знаков по-прежнему использует ПУТЬ, это нормально
+        # Функция водяных знаков сработает на сжатом фото
         watermarked_image_path = add_watermarks(original_image_path, "FrontAgro", today_date)
 
         caption = f"🌻 Найдено: {seed_count} семян"
@@ -122,7 +128,8 @@ def handle_photo(message: Message):
 
         # Очистка
         os.remove(original_image_path)
-        os.remove(watermarked_image_path)
+        if watermarked_image_path != original_image_path:
+             os.remove(watermarked_image_path)
 
     except Exception as e:
         print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
