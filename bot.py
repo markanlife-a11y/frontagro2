@@ -65,7 +65,12 @@ def add_watermarks(image_path, text, date_text):
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message: Message):
-    bot.reply_to(message, "Здравствуйте! Отправьте мне фото корзинки подсолнечника, и я посчитаю семена.")
+    # --- ❗️ НАЧАЛО ИЗМЕНЕНИЯ ---
+    try:
+        bot.reply_to(message, "Здравствуйте! Отправьте мне фото корзинки подсолнечника, и я посчитаю семена.")
+    except Exception as e:
+        print(f"!!! ОШИБКА В SEND_WELCOME: {e}")
+    # --- ❗️ КОНЕЦ ИЗМЕНЕНИЯ ---
 
 # Обработчик ПО ФОТОГРАФИИ
 @bot.message_handler(content_types=['photo'])
@@ -117,7 +122,7 @@ def handle_photo(message: Message):
         os.remove(watermarked_image_path)
 
     except Exception as e:
-        print(e)
+        print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
         bot.send_message(chat_id, f"Произошла внутренняя ошибка: {e}")
 
 # --- Логика Веб-сервера (Webhook) ---
