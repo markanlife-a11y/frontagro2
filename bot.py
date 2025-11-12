@@ -2,11 +2,11 @@ import os
 import requests
 import telebot
 from telebot.types import Message
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont # ❗️ PIL нам нужен для открытия фото
 from datetime import datetime
 from flask import Flask, request, abort
 import base64
-from inference_sdk import InferenceHTTPClient # ❗️ ИСПОЛЬЗУЕМ ОФИЦИАЛЬНУЮ БИБЛИОТЕКУ
+from inference_sdk import InferenceHTTPClient # ❗️ Используем SDK
 
 # --- ВАШИ КЛЮЧИ ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -14,7 +14,7 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
 ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE")
 ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID")
 
-# --- ❗️ ИНИЦИАЛИЗИРУЕМ ОФИЦИАЛЬНЫЙ КЛИЕНТ (КАК В ВАШЕМ ПРИМЕРЕ) ---
+# --- ИНИЦИАЛИЗИРУЕМ ОФИЦИАЛЬНЫЙ КЛИЕНТ ---
 rf_client = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
     api_key=ROBOFLOW_API_KEY
@@ -89,14 +89,17 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (ИСПОЛЬЗУЕМ SDK) ---
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (PIL.Image) ---
         
-        # 1. Вызываем Roboflow через SDK
+        # 1. Открываем сохраненное фото с помощью PIL
+        pil_image = Image.open(original_image_path)
+        
+        # 2. Вызываем Roboflow, передавая ОБЪЕКТ PIL, а не путь
         result = rf_client.run_workflow(
             workspace_name=ROBOFLOW_WORKSPACE,
             workflow_id=ROBOFLOW_WORKFLOW_ID,
             images={
-                "image": original_image_path # ❗️ SDK сам обработает путь к файлу
+                "image": pil_image # ❗️❗️❗️ ВОТ ИСПРАВЛЕНИЕ ❗️❗️❗️
             }
         )
         # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
@@ -110,6 +113,7 @@ def handle_photo(message: Message):
                     break
         
         today_date = datetime.now().strftime("%d.%m.%Y")
+        # Функция водяных знаков по-прежнему использует ПУТЬ, это нормально
         watermarked_image_path = add_watermarks(original_image_path, "FrontAgro", today_date)
 
         caption = f"🌻 Найдено: {seed_count} семян"
