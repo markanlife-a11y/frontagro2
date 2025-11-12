@@ -3,3 +3,4 @@ Pillow
 Flask
 gunicorn
 inference_sdk
+pyTelegramBotAPI
