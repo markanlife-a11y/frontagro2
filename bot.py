@@ -14,10 +14,14 @@ ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE")
 ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID")
 
 # URL API (для "Serverless" API)
-ROBOFLOW_API_URL = f"https://serverless.roboflow.com/{ROBOFLOW_WORKSPACE}/{ROBOFLOW_WORKFLOW_ID}?api_key={ROBOFLOW_API_KEY}"
+# ❗️ ИСПРАВЛЕНИЕ: Добавляем параметры в отдельный dict
+ROBOFLOW_API_URL = f"https://serverless.roboflow.com/{ROBOFLOW_WORKSPACE}/{ROBOFLOW_WORKFLOW_ID}"
+ROBOFLOW_PARAMS = {
+    "api_key": ROBOFLOW_API_KEY
+}
 
 # Инициализация бота
-bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False) # threaded=False - это важно
 
 # Инициализация веб-сервера
 app = Flask(__name__)
@@ -65,19 +69,16 @@ def add_watermarks(image_path, text, date_text):
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message: Message):
-    # --- ❗️ НАЧАЛО ИЗМЕНЕНИЯ ---
     try:
         bot.reply_to(message, "Здравствуйте! Отправьте мне фото корзинки подсолнечника, и я посчитаю семена.")
     except Exception as e:
         print(f"!!! ОШИБКА В SEND_WELCOME: {e}")
-    # --- ❗️ КОНЕЦ ИЗМЕНЕНИЯ ---
 
 # Обработчик ПО ФОТОГРАФИИ
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message: Message):
     chat_id = message.chat.id
     try:
-        # Сообщаем, что начали (это может не успеть отправиться до основного ответа)
         bot.send_message(chat_id, "📸 Фото получил. Начинаю анализ...")
 
         file_id = message.photo[-1].file_id
@@ -88,22 +89,28 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # Отправляем в Roboflow (как бинарный файл)
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ ---
+        # Отправляем в Roboflow как multipart/form-data (правильный способ)
         with open(original_image_path, 'rb') as f:
+            # 'files' автоматически создаст правильный 'Content-Type'
+            files = {'file': f} 
             response = requests.post(
                 ROBOFLOW_API_URL,
-                data=f, 
-                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                params=ROBOFLOW_PARAMS, # Ключ API передаем в параметрах URL
+                files=files, # Фото передаем как файл
                 timeout=30
             )
+        # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if response.status_code != 200:
+            print(f"Ошибка Roboflow. Статус: {response.status_code}, Ответ: {response.text}")
             bot.send_message(chat_id, f"Ошибка сервера Roboflow: {response.text}")
             return
 
         result_json = response.json()
         
         seed_count = 0
+        # Ищем наш оранжевый блок 'count_objects'
         if result_json.get('outputs') and isinstance(result_json['outputs'], list) and len(result_json['outputs']) > 0:
             for output in result_json['outputs']:
                 if output.get('task_type') == 'Property Definition' and output.get('property_name') == 'count_objects':
@@ -115,44 +122,4 @@ def handle_photo(message: Message):
 
         caption = f"🌻 Найдено: {seed_count} семян"
         with open(watermarked_image_path, 'rb') as photo:
-            bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id)
-
-        # Очистка
-        os.remove(original_image_path)
-        os.remove(watermarked_image_path)
-
-    except Exception as e:
-        print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
-        bot.send_message(chat_id, f"Произошла внутренняя ошибка: {e}")
-
-# --- Логика Веб-сервера (Webhook) ---
-
-# Это адрес, который будет "слушать" Telegram
-@app.route(f"/{BOT_TOKEN}", methods=['POST'])
-def get_message():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return '!', 200
-    else:
-        abort(403)
-
-# Это адрес для ручной установки Webhook (нужно открыть 1 раз)
-@app.route("/")
-def set_webhook():
-    # URL сервиса, который вам даст Render (https://frontagro2.onrender.com)
-    APP_URL = os.environ.get("RENDER_EXTERNAL_URL")
-    if not APP_URL:
-        return "Ошибка: не найдена переменная RENDER_EXTERNAL_URL", 500
-        
-    # Устанавливаем Webhook
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{APP_URL}/{BOT_TOKEN}")
-    return f"Webhook установлен на {APP_URL}/{BOT_TOKEN}", 200
-
-# Запуск сервера
-if __name__ == "__main__":
-    # Gunicorn будет запускать 'app', поэтому bot.polling() больше не нужен
-    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
-
+            bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id
