@@ -34,6 +34,7 @@ def add_watermarks(image_path, text, date_text):
         font_size = int(img.height * 0.05)
         
         try:
+            # Убедись, что 'font.ttf' лежит в корне твоего проекта на GitHub
             font = ImageFont.truetype("font.ttf", font_size)
         except IOError:
             print("Не могу найти font.ttf, использую шрифт по умолчанию")
@@ -78,6 +79,9 @@ def send_welcome(message: Message):
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message: Message):
     chat_id = message.chat.id
+    original_image_path = f"{chat_id}_{message.message_id}.jpg"
+    watermarked_image_path = None # Инициализируем, чтобы знать, что удалять
+
     try:
         bot.send_message(chat_id, "📸 Фото получил. Сжимаю... Начинаю анализ...")
 
@@ -85,7 +89,6 @@ def handle_photo(message: Message):
         file_info = bot.get_file(file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        original_image_path = f"{chat_id}_{message.message_id}.jpg"
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
@@ -99,17 +102,35 @@ def handle_photo(message: Message):
             workspace_name=ROBOFLOW_WORKSPACE,
             workflow_id=ROBOFLOW_WORKFLOW_ID,
             images={
-                "image": original_image_path # ❗️ SDK сам обработает путь к файлу
+                "image": original_image_path
             }
         )
         
+        # --- ❗️❗️❗️ НАЧАЛО ИСПРАВЛЕНИЯ ❗️❗️❗️ ---
+        #
+        # Ошибка ('list' object has no attribute 'get') возникала здесь.
+        # Твой лог показывал, что 'result' - это СПИСОК (list), а не СЛОВАРЬ (dict).
+        # Мы ожидаем структуру (из логов): [{'count_objects': 159, ...}]
+        
         seed_count = 0
-        # Ищем наш оранжевый блок 'count_objects'
-        if result.get('outputs') and isinstance(result['outputs'], list) and len(result['outputs']) > 0:
-            for output in result['outputs']:
-                if output.get('task_type') == 'Property Definition' and output.get('property_name') == 'count_objects':
-                    seed_count = output.get('value', 0)
-                    break
+        
+        # 1. Проверяем, что это список и он не пустой
+        if isinstance(result, list) and len(result) > 0:
+            # 2. Берем ПЕРВЫЙ элемент (который, как мы ожидаем, является словарем)
+            main_output = result[0] 
+            
+            # 3. Теперь, когда main_output - это словарь, мы можем безопасно использовать .get()
+            #    и достать 'count_objects' (как в твоем логе)
+            seed_count = main_output.get('count_objects', 0)
+            
+        else:
+            # На случай, если Roboflow вернет что-то неожиданное
+            print(f"!!! НЕОЖИДАННАЯ СТРУКТУРА ROBOFLOW: {result}")
+            bot.send_message(chat_id, "Не смог распознать ответ от Roboflow (неожиданная структура).")
+            # Выходим из функции, 'finally' почистит файлы
+            return
+
+        # --- ❗️❗️❗️ КОНЕЦ ИСПРАВЛЕНИЯ ❗️❗️❗️ ---
         
         today_date = datetime.now().strftime("%d.%m.%Y")
         # Функция водяных знаков сработает на сжатом фото
@@ -119,17 +140,28 @@ def handle_photo(message: Message):
         with open(watermarked_image_path, 'rb') as photo:
             bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id)
 
-        # Очистка
-        os.remove(original_image_path)
-        if watermarked_image_path != original_image_path:
-             os.remove(watermarked_image_path)
-
     except Exception as e:
         print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
         # Если 'result' успел создаться, напечатаем его, чтобы понять ошибку
         if 'result' in locals():
             print(f"!!! ROBOFLOW RAW RESULT: {result}")
         bot.send_message(chat_id, f"Произошла внутренняя ошибка: {e}")
+
+    finally:
+        # --- Обязательная Очистка ---
+        # Этот блок 'finally' выполнится всегда, даже если была ошибка,
+        # чтобы не засорять сервер
+        try:
+            if os.path.exists(original_image_path):
+                os.remove(original_image_path)
+            
+            # watermarked_image_path создается только после УСПЕШНОГО водяного знака
+            # И он не должен быть равен оригиналу
+            if watermarked_image_path and (watermarked_image_path != original_image_path) and os.path.exists(watermarked_image_path):
+                 os.remove(watermarked_image_path)
+        except Exception as clean_e:
+            print(f"!!! ОШИБКА ОЧИСТКИ ФАЙЛОВ: {clean_e}")
+
 
 # --- Логика Веб-сервера (Webhook) ---
 
