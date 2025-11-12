@@ -5,7 +5,8 @@ from telebot.types import Message
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from flask import Flask, request, abort
-import base64 # ❗️ Нужен для кодирования
+import base64
+from inference_sdk import InferenceHTTPClient # ❗️ ИСПОЛЬЗУЕМ ОФИЦИАЛЬНУЮ БИБЛИОТЕКУ
 
 # --- ВАШИ КЛЮЧИ ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -13,11 +14,11 @@ ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
 ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE")
 ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID")
 
-# URL API (для "Serverless" API)
-ROBOFLOW_API_URL = f"https://serverless.roboflow.com/{ROBOFLOW_WORKSPACE}/{ROBOFLOW_WORKFLOW_ID}"
-ROBOFLOW_PARAMS = {
-    "api_key": ROBOFLOW_API_KEY
-}
+# --- ❗️ ИНИЦИАЛИЗИРУЕМ ОФИЦИАЛЬНЫЙ КЛИЕНТ (КАК В ВАШЕМ ПРИМЕРЕ) ---
+rf_client = InferenceHTTPClient(
+    api_url="https://serverless.roboflow.com",
+    api_key=ROBOFLOW_API_KEY
+)
 
 # Инициализация бота
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False) # threaded=False - это важно
@@ -88,38 +89,22 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (JSON + Base64) ---
-        # 1. Читаем файл и кодируем его в Base64
-        with open(original_image_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (ИСПОЛЬЗУЕМ SDK) ---
         
-        # 2. Создаем JSON-объект, как ожидает Roboflow
-        # (Поле 'image', как в примере, но со значением Base64)
-        payload = {
-            "image": encoded_string
-        }
-        
-        # 3. Отправляем JSON-объект
-        response = requests.post(
-            ROBOFLOW_API_URL,
-            params=ROBOFLOW_PARAMS, 
-            json=payload, # ❗️ Отправляем как JSON
-            headers={'Content-Type': 'application/json'}, # ❗️ Говорим, что это JSON
-            timeout=30
+        # 1. Вызываем Roboflow через SDK
+        result = rf_client.run_workflow(
+            workspace_name=ROBOFLOW_WORKSPACE,
+            workflow_id=ROBOFLOW_WORKFLOW_ID,
+            images={
+                "image": original_image_path # ❗️ SDK сам обработает путь к файлу
+            }
         )
         # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
         
-        if response.status_code != 200:
-            print(f"Ошибка Roboflow. Статус: {response.status_code}, Ответ: {response.text}")
-            bot.send_message(chat_id, f"Ошибка сервера Roboflow: {response.text}")
-            return
-
-        result_json = response.json()
-        
         seed_count = 0
         # Ищем наш оранжевый блок 'count_objects'
-        if result_json.get('outputs') and isinstance(result_json['outputs'], list) and len(result_json['outputs']) > 0:
-            for output in result_json['outputs']:
+        if result.get('outputs') and isinstance(result['outputs'], list) and len(result['outputs']) > 0:
+            for output in result['outputs']:
                 if output.get('task_type') == 'Property Definition' and output.get('property_name') == 'count_objects':
                     seed_count = output.get('value', 0)
                     break
@@ -137,6 +122,9 @@ def handle_photo(message: Message):
 
     except Exception as e:
         print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
+        # Если 'result' успел создаться, напечатаем его, чтобы понять ошибку
+        if 'result' in locals():
+            print(f"!!! ROBOFLOW RAW RESULT: {result}")
         bot.send_message(chat_id, f"Произошла внутренняя ошибка: {e}")
 
 # --- Логика Веб-сервера (Webhook) ---
