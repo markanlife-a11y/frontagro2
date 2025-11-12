@@ -31,7 +31,11 @@ def add_watermarks(image_path, text, date_text):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
-        font_size = int(img.height * 0.05)
+        
+        # --- ❗️❗️❗️ ИЗМЕНЕНИЕ: УМЕНЬШИЛ ШРИФТ ❗️❗️❗️ ---
+        # Было 0.05 (5%), стало 0.03 (3%)
+        font_size = int(img.height * 0.03) 
+        # --- ❗️❗️❗️ КОНЕЦ ИЗМЕНЕНИЯ ❗️❗️❗️ ---
         
         try:
             # Убедись, что 'font.ttf' лежит в корне твоего проекта на GitHub
@@ -106,12 +110,6 @@ def handle_photo(message: Message):
             }
         )
         
-        # --- ❗️❗️❗️ НАЧАЛО ИСПРАВЛЕНИЯ ❗️❗️❗️ ---
-        #
-        # Ошибка ('list' object has no attribute 'get') возникала здесь.
-        # Твой лог показывал, что 'result' - это СПИСОК (list), а не СЛОВАРЬ (dict).
-        # Мы ожидаем структуру (из логов): [{'count_objects': 159, ...}]
-        
         seed_count = 0
         
         # 1. Проверяем, что это список и он не пустой
@@ -129,8 +127,6 @@ def handle_photo(message: Message):
             bot.send_message(chat_id, "Не смог распознать ответ от Roboflow (неожиданная структура).")
             # Выходим из функции, 'finally' почистит файлы
             return
-
-        # --- ❗️❗️❗️ КОНЕЦ ИСПРАВЛЕНИЯ ❗️❗️❗️ ---
         
         today_date = datetime.now().strftime("%d.%m.%Y")
         # Функция водяных знаков сработает на сжатом фото
