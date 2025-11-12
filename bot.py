@@ -88,15 +88,17 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # Отправляем в Roboflow как multipart/form-data
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (ИМЯ ФАЙЛА) ---
+        # Roboflow ожидает, что поле будет 'image', а не 'file'
         with open(original_image_path, 'rb') as f:
-            files = {'file': f} 
+            files = {'image': f} # <-- ❗️❗️❗️ ВОТ ИСПРАВЛЕНИЕ ❗️❗️❗️
             response = requests.post(
                 ROBOFLOW_API_URL,
                 params=ROBOFLOW_PARAMS, 
-                files=files, 
+                files=files, # 'files' автоматически создаст правильный 'Content-Type'
                 timeout=30
             )
+        # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if response.status_code != 200:
             print(f"Ошибка Roboflow. Статус: {response.status_code}, Ответ: {response.text}")
@@ -118,7 +120,6 @@ def handle_photo(message: Message):
 
         caption = f"🌻 Найдено: {seed_count} семян"
         with open(watermarked_image_path, 'rb') as photo:
-            # --- ❗️ ВОТ ИСПРАВЛЕНИЕ (добавлена ')' в конце) ---
             bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id)
 
         # Очистка
