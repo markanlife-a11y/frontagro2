@@ -1,5 +1,6 @@
+pyTelegramBotAPI
 requests
 Pillow
 Flask
 gunicorn
-inference_sdk
+roboflow
