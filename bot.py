@@ -5,10 +5,9 @@ from telebot.types import Message
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from flask import Flask, request, abort
-import base64 # ❗️ Нужна новая библиотека (она встроена в Python)
+import base64 # ❗️ Нужен для кодирования
 
 # --- ВАШИ КЛЮЧИ ---
-# Возьмите их из настроек хостинга (Render)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
 ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE")
@@ -89,17 +88,23 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (Base64) ---
+        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ (JSON + Base64) ---
         # 1. Читаем файл и кодируем его в Base64
         with open(original_image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         
-        # 2. Отправляем Base64-строку как 'data', а не 'files'
+        # 2. Создаем JSON-объект, как ожидает Roboflow
+        # (Поле 'image', как в примере, но со значением Base64)
+        payload = {
+            "image": encoded_string
+        }
+        
+        # 3. Отправляем JSON-объект
         response = requests.post(
             ROBOFLOW_API_URL,
             params=ROBOFLOW_PARAMS, 
-            data=encoded_string, # ❗️ Отправляем текст
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}, # ❗️ Говорим, что это текст
+            json=payload, # ❗️ Отправляем как JSON
+            headers={'Content-Type': 'application/json'}, # ❗️ Говорим, что это JSON
             timeout=30
         )
         # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
