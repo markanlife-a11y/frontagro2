@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from flask import Flask, request, abort
 import base64
-from inference_sdk import InferenceHTTPClient
+from roboflow import InferenceHTTPClient # ❗️ ИСПОЛЬЗУЕМ ОФИЦИАЛЬНУЮ БИБЛИОТЕКУ
 
 # --- ВАШИ КЛЮЧИ ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -193,3 +193,4 @@ def set_webhook():
 # Запуск сервера
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
+
