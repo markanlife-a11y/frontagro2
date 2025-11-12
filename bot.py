@@ -17,7 +17,7 @@ ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID")
 ROBOFLOW_API_URL = f"https://serverless.roboflow.com/{ROBOFLOW_WORKSPACE}/{ROBOFLOW_WORKFLOW_ID}?api_key={ROBOFLOW_API_KEY}"
 
 # Инициализация бота
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 # Инициализация веб-сервера
 app = Flask(__name__)
@@ -155,3 +155,4 @@ def set_webhook():
 if __name__ == "__main__":
     # Gunicorn будет запускать 'app', поэтому bot.polling() больше не нужен
     app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
+
