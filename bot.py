@@ -14,7 +14,6 @@ ROBOFLOW_WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE")
 ROBOFLOW_WORKFLOW_ID = os.environ.get("ROBOFLOW_WORKFLOW_ID")
 
 # URL API (для "Serverless" API)
-# ❗️ ИСПРАВЛЕНИЕ: Добавляем параметры в отдельный dict
 ROBOFLOW_API_URL = f"https://serverless.roboflow.com/{ROBOFLOW_WORKSPACE}/{ROBOFLOW_WORKFLOW_ID}"
 ROBOFLOW_PARAMS = {
     "api_key": ROBOFLOW_API_KEY
@@ -89,18 +88,15 @@ def handle_photo(message: Message):
         with open(original_image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
 
-        # --- ❗️ НАЧАЛО ИСПРАВЛЕНИЯ ---
-        # Отправляем в Roboflow как multipart/form-data (правильный способ)
+        # Отправляем в Roboflow как multipart/form-data
         with open(original_image_path, 'rb') as f:
-            # 'files' автоматически создаст правильный 'Content-Type'
             files = {'file': f} 
             response = requests.post(
                 ROBOFLOW_API_URL,
-                params=ROBOFLOW_PARAMS, # Ключ API передаем в параметрах URL
-                files=files, # Фото передаем как файл
+                params=ROBOFLOW_PARAMS, 
+                files=files, 
                 timeout=30
             )
-        # --- ❗️ КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if response.status_code != 200:
             print(f"Ошибка Roboflow. Статус: {response.status_code}, Ответ: {response.text}")
@@ -122,4 +118,44 @@ def handle_photo(message: Message):
 
         caption = f"🌻 Найдено: {seed_count} семян"
         with open(watermarked_image_path, 'rb') as photo:
-            bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id
+            # --- ❗️ ВОТ ИСПРАВЛЕНИЕ (добавлена ')' в конце) ---
+            bot.send_photo(chat_id, photo, caption=caption, reply_to_message_id=message.message_id)
+
+        # Очистка
+        os.remove(original_image_path)
+        os.remove(watermarked_image_path)
+
+    except Exception as e:
+        print(f"!!! ОШИБКА В HANDLE_PHOTO: {e}")
+        bot.send_message(chat_id, f"Произошла внутренняя ошибка: {e}")
+
+# --- Логика Веб-сервера (Webhook) ---
+
+# Это адрес, который будет "слушать" Telegram
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def get_message():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '!', 200
+    else:
+        abort(403)
+
+# Это адрес для ручной установки Webhook (нужно открыть 1 раз)
+@app.route("/")
+def set_webhook():
+    # URL сервиса, который вам даст Render (https://frontagro2.onrender.com)
+    APP_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    if not APP_URL:
+        print("!!! ОШИБКА: не найдена переменная RENDER_EXTERNAL_URL")
+        return "Ошибка: не найдена переменная RENDER_EXTERNAL_URL", 500
+        
+    # Устанавливаем Webhook
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{APP_URL}/{BOT_TOKEN}")
+    return f"Webhook установлен на {APP_URL}/{BOT_TOKEN}", 200
+
+# Запуск сервера
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
